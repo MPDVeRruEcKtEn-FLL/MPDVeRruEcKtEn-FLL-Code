@@ -1,9 +1,6 @@
-# LEGO slot:2
-
-import hub # type: ignore
-import motor  # type: ignore
+import hub
+import motor
 import time
-
 
 import sys
 import io
@@ -19,13 +16,13 @@ Our Personal Main Code
 Here you can also find our specific exercises and also some examples.
 
 Those are the ports we used for the specific tasks:
-MotorPorts:
+Ports:
     A = 0: MotorRight
-    B = 1: Unused
-    C = 2: Unused
-    D = 3: Addition
+    B = 1: ColorSensor
+    C = 2: ActionRight
+    D = 3: ActionLeft
     E = 4: MotorLeft
-    F = 5: AbilityRight
+    F = 5: ColorSensor
 
 """
 print()
@@ -38,7 +35,13 @@ class Controller:
 
         self.driveBase = DriveBase()
         
-        self.DIVES = [self.detach_pinsel, self.schiffbergung]
+        self.DIVES = [
+            self.combined,
+            self.blue_path,
+            self.golden_path,
+            self.green_path,
+            self.lilac_path,
+                      ]
 
         Logger.info("Started Program", code = 0)
 
@@ -61,12 +64,10 @@ class Controller:
             Logger.exception(message = "UNKNOWN WHICH BUTTON", code = 303)
             return False
 
-    def __connect_addition__(self, direction):
-        self.driveBase.run_motor_duration(direction * 1110, 0, DriveBase.ADDITION)
+    def __wait_for_button__(self):
         Logger.info("WAITING", code = "START")
         while not self.__button_check__(0):
-            pass
-        self.driveBase.stop_motor(DriveBase.ADDITION)
+            time.sleep(0.1)
         time.sleep(0.5)
         
     def get_program_slot(self):
@@ -98,50 +99,144 @@ class Controller:
     # RUN PROGRAM #
     ###############
 
-    def run_program(self):
-        dive = self.get_program_slot()
+    def run_program(self, dive: int = None):
         if dive is None:
-            Logger.info("No program slot found", code=404)
-            return
-        self.driveBase.attach_addition(True)
-        time.sleep(1)  # Give some time to start
+            dive = self.get_program_slot()
+            if dive is None:
+                Logger.exception(99, "No program slot found, cannot run program")
+                return
+        Logger.info(f"Starting program {dive}: {self.DIVES[dive].__name__}", code = 100 + dive)
         self.DIVES[dive]()
         self.driveBase.attach_addition(False)
         Logger.info("Finished program", code = 200)
-        time.sleep(1)  # Give some time to read the message
 
     ########################
     # Tasks for Robot Game #
     ########################
+    
+    def combined(self):
+        for i in range(1, len(self.DIVES[1:])):
+            self.run_program(i)
+            self.__wait_for_button__()
+        
+    def blue_path(self):
+        db = self.driveBase
+        db.attach_addition(True)
+        db.drive_distance(58, re_align=False)
+        db.drive_distance(-6)
+        db.run_motor_duration(-1110, 5, 2)
+        for i in range(2):
+            db.drive_distance(8, stop=False, re_align=False)
+            db.drive_distance(-8, stop=False, re_align=False)
+        db.drive_distance(10, re_align=False)
+        db.run_motor_duration(1110, 5, 2)
+        db.drive_distance(-60, re_align=False)
+    
+    def golden_path(self):
+        def arm_up(speed=300, acc=1000):
+            db.run_to_absolute_position(145, speed, 2, acceleration=acc)
+        def arm_down(speed=300, acc=1000):
+            db.run_to_absolute_position(45, speed, 2, acceleration=acc)
+        db = self.driveBase
+        db.run_to_absolute_position(45, 100, 2)
+        db.attach_addition(True)
+        db.drive_distance(-4)
+        db.reset_gyro()
+        arm_up()
+        db.drive_distance(52)
+        db.turn_to_angle(-51, pGain=40, dGain=9)
+        arm_down()
+        db.drive_distance(28)
+        arm_up(400, acc=900)
+        arm_up(200, acc=500)
+        arm_down()
+        db.turn_to_angle(-90, DriveBase.RIGHTTURN)
+        arm_up()
+        db.drive_distance(5)
 
-    ###
+        db.turn_to_angle(-157, DriveBase.RIGHTTURN)
+        db.drive_distance(-20)
+        arm_down()
+        db.drive_distance(8)
+        db.run_to_absolute_position(145, 1110, 2, acceleration=10000)
+        time.sleep_ms(300)
+        arm_up()
+        db.turn_to_angle(-90, DriveBase.RIGHTTURN, iGain=2)
+        db.drive_distance(50)
+        db.turn_to_angle(-143, DriveBase.RIGHTTURN)
+        db.drive_distance(-4)
+        arm_down(1110, 10000)
+        arm_down(200)
+        time.sleep_ms(300)
+        arm_up(200)
+        db.turn_to_angle(-133, dGain=0)
+        db.drive_distance(5)
+        arm_down()
+        motor.run(2, -200)
+        db.drive_distance(20, 800)
+        db.drive_distance(-30)
+
+    def green_path(self):
+        db = self.driveBase
+        db.run_to_absolute_position(0, 1000, 2)
+        db.attach_addition(True)
+        db.drive_distance(-5)
+        db.reset_gyro()
+        db.run_to_absolute_position(-90, 10000, 2, acceleration=400)
+        db.drive_distance(80, mainspeed=1110, stopspeed=800)
+        db.turn_to_angle(90, pGain=30)
+        db.drive_distance(43)
+        db.turn_to_angle(0, pGain=30)
+        db.drive_distance(10)
+        
+        db.drive_distance(-4)
+        db.turn_to_angle(-90, pGain=30)
+        db.drive_distance(44.5)
+        db.turn_to_angle(-100, pGain=30)
+        db.drive_distance(-4, 800, re_align=False)
+        db.run_to_absolute_position(-30, 100, 2)
+        db.drive_distance(-7, re_align=False)
+        db.turn_to_angle(-170, pGain=30)
+        db.drive_distance(75,1100)
+
+    def red_path(self):
+        db = self.driveBase
+        db.attach_addition(True)
+        db.drive_distance(-5)
+        db.reset_gyro()
+        db.drive_distance(80)
+        db.drive_distance(-82)
+
+    def lilac_path(self):
+        db = self.driveBase
+        db.run_to_absolute_position(45, 100, 2)
+        db.attach_addition(True)
+        db.drive_distance(-5)
+        db.reset_gyro()
+        motor.run(2, 50)
+        db.drive_distance(53)
+        motor.stop(2)
+        for i in range(0,3):
+            db.run_to_absolute_position(45, 600, 2, acceleration=2000)
+            db.run_to_absolute_position(135, 100, 2)
+        db.drive_distance(-53)
+        db.run_to_absolute_position(45, 100, 2)
 
     ###########
     # TESTING #
     ###########
-    
-    
-    def detach_pinsel(self):
-        self.driveBase.drive_distance(83, 1110, 800)
-        self.driveBase.turn_to_angle(-5, minspeed=100, maxspeed=1110)
-        self.driveBase.drive_distance(-80, 1110, 800)
-        
-    def schiffbergung(self):
-        self.driveBase.turn_to_angle(-5)
-        self.driveBase.drive_distance(45)
-        self.driveBase.drive_distance(-45)
-    ###
+
+    def get_current_heading(self):
+        while not self.__button_check__(0):
+            self.driveBase.get_heading()
+            time.sleep(1)
 
 
 ctrl = Controller()
 
-# ctrl.driveBase.configure_pid(5, 1, 1)
-
-
 def main():
     ctrl.run_program()
     ctrl.kill()
-
 
 # Start the main async function
 if __name__ == "__main__":

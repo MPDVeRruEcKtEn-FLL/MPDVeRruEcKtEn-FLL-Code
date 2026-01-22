@@ -1,7 +1,7 @@
-import hub # type: ignore
-import motor  # type: ignore
-import motor_pair  # type: ignore
-import color_sensor  # type: ignore
+from hub import motion_sensor
+import motor
+import motor_pair
+import color_sensor
 
 import time
 import math
@@ -26,6 +26,11 @@ class DriveBase:
     TANKTURN = 0
     LEFTTURN = 1
     RIGHTTURN = 2
+
+    CLOCKWISE = 0
+    COUNTERCLOCKWISE = 1
+    SHORTEST_PATH = 2
+    LONGEST_PATH = 3
     
     LEFT = 1
     RIGHT = -1
@@ -38,22 +43,22 @@ class DriveBase:
     
     PREGLER = 0
     IREGLER = 0
-    DREGLER = 1
+    DREGLER = 0
 
     # CONFIGS
 
     MOTORR = 0
     MOTORL = 4
     ADDITION = 3
-    ACTION = 5
-    COLORSENS = 2
+    ACTION = 2
+    COLORSENS = 5
 
     MOTPAIR = 0
 
-    WHEELCIRC = 17.6 / (24/8) # Übersetzung von 3 [Rad:Motor] 24:8
+    WHEELCIRC = 17.5 / (24/8) # Übersetzung von 3 [Rad:Motor] 24:8
 
     def __init__(self, initial_yaw: int = 0):
-        self.gyroSens = hub.motion_sensor
+        self.gyroSens = motion_sensor
         self.stop = False
 
         self.global_turn_value = initial_yaw
@@ -157,14 +162,14 @@ class DriveBase:
     def drive_distance(
         self,
         distance: float = 100,
-        mainspeed: int = 1000,
+        mainspeed: int = 1110,
         stopspeed: int = 700,
         re_align: bool = True,
         isolated_drive: bool = False,
         stop: bool = True,
         *,
-        brake_start: float = 0.7,
-        timestep: int = 100,
+        brake_start: float = 0.95,
+        timestep: int = 1,
         avoid_collision: bool = False,
         ) -> bool:
         """
@@ -198,12 +203,12 @@ class DriveBase:
             If the robot should stop at the end of the driven distance. \n
             Ob der Roboter am Ende der Distanz stoppen soll.
 
-        ##### brake_start : int = 0.7
+        ##### brake_start : int = 0.95
             Percentage of the driven distance after which the robot starts braking. \n
             Prozentsatz der zurückgelegten Strecke, nach der der Roboter mit dem Bremsen beginnt. \n
         ##### timestep : int = 100
-            The timestep between every single calculation and correction to prevent to fast reactions. \n
-            Der Zeitabstand zwischen jeder Berechnung und Ausgleichung, um zu schnelle Reaktionen zu verhindern. \n
+            The timestep in ms between every single calculation and correction to prevent to fast reactions. \n
+            Der Zeitabstand in ms zwischen jeder Berechnung und Ausgleichung, um zu schnelle Reaktionen zu verhindern. \n
         ##### avoid_collision : bool = False    ---> UNUSED
             If the robot should try to avoid every collision. \n
             Ob der Roboter versuchen sollte, Kollisionen auszuweichen.
@@ -267,7 +272,7 @@ class DriveBase:
             curren_steering = (
                 error() * p_regler
                 + integral * i_regler
-                + d_regler * (error() - old_change)
+                + d_regler * (error() - old_change) / (timestep / 1000)
             )
             
             old_change = error()
@@ -275,7 +280,7 @@ class DriveBase:
             curren_steering = max(-100, min(curren_steering, 100))
 
             # Calculation of speed based on acceleration and braking, calculation of steering value for robot to drive perfectly straight
-            if distance == 0:
+            if distance == 0 or not stop:
                 speed = mainspeed
             else:
                 speed = self.speed_calculation(
@@ -288,10 +293,10 @@ class DriveBase:
                     stopspeed=stopspeed,
                 )
                 braking = True if driven_distance > brake_start_value else False
-                curren_steering = 0 if braking else curren_steering
+                # curren_steering = 0 if braking else curren_steering
 
             motor_pair.move(
-                self.MOTPAIR, int(curren_steering), velocity=int(invert * -speed)
+                self.MOTPAIR, int(invert * curren_steering), velocity=int(invert * -speed)
             )
 
             if distance == 0:
@@ -304,7 +309,7 @@ class DriveBase:
                 motor_pair.stop(self.MOTPAIR)
             elif rotate_distance < driven_distance:
                 loop = False
-            time.sleep(0.1)
+            time.sleep_ms(timestep)
         if re_align:
             # Removed isolated turn because not needed
             self.turn_to_angle(self.global_turn_value)
@@ -316,13 +321,13 @@ class DriveBase:
         target_angle: float = 90,
         turn_type: int = TANKTURN,
         minspeed: int = 100,
-        maxspeed: int = 1000,
+        maxspeed: int = 1110,
         isolated_turn: bool = False,
         smart_stop: bool = True,
         *,
-        pGain: float = 5,
+        pGain: float = 20,
         iGain: float = 0,
-        dGain: float = 0.4,
+        dGain: float = 6,
         powerExp: float = 6,
         tolerance: float = 0.5,
         timestep: int = 10
@@ -362,13 +367,13 @@ class DriveBase:
             If the robot should stop at the end. \n
             Ob der Roboter am Ende stoppen soll.
 
-        ##### pGain : float = 5
+        ##### pGain : float = 40
             The proporional gain of the pid-turn. \n
             Die Proportionale von dem PID-Turn. \n
         ##### iGain : float = 0
             The integral gain of the pid-turn. \n
             Die Integral von dem PID-Turn. \n
-        ##### dGain : float = 0.4
+        ##### dGain : float = 9
             The derivative gain of the pid-turn. \n
             Die Derivative von dem PID-Turn. \n
         ##### power_exp : float = 6
@@ -404,6 +409,9 @@ class DriveBase:
         power = 0
         prev_error = 0
         invert = 1
+        
+        if turn_type != self.TANKTURN:
+            dGain = 0
 
         if not isolated_turn:
             self.global_turn_value = target_angle
@@ -540,7 +548,7 @@ class DriveBase:
         print("Finish")
         motor.stop(self.MOTPAIR)
 
-    def till_collide(self, speed: int = 900, gate: int = 300, timeout: int = -1) -> float:
+    def till_collide(self, speed: int = 900, gate: int = 300, timeout: int = -1, *, start_delay: int = 1000) -> float:
         """Drive the robot until a collision is detected bigger than the given gate value based on the motor duty cycle. \n
         
         Fahre den Roboter bis eine Kollision erkannt wird, die größer als der gegebene Grenzwert ist, basierend auf dem Motordutycycle. \n
@@ -572,7 +580,7 @@ class DriveBase:
         start_dist = get_driven()
 
         motor_pair.move(self.MOTPAIR, 0, velocity=speed)
-        time.sleep(0.5)
+        time.sleep_ms(start_delay)
         start_cycl = cycl()
         start_time = time.ticks_ms()
         while True:
@@ -765,6 +773,7 @@ class DriveBase:
                         motor.stop(port, stop=motor.SMART_COAST)
                 if len(ports_list) == 0:
                     break
+                time.sleep_ms(100)
             return True
         except Exception as e:
             Logger.exception(
@@ -817,7 +826,15 @@ class DriveBase:
         return self.run_motor_degree(speed, degree, self.ACTION, acceleration=acceleration)
 
     def run_to_absolute_position(
-        self, position: int = 0, speed: int = 500, *ports: int, acceleration: int = 1000
+        self, 
+        position: int = 0, 
+        speed: int = 500, 
+        *ports: int, 
+        acceleration: int = 1000, 
+        direction: int = 2,
+        fine_correction: bool = True,
+        correction_timeout: int = 2000,
+        correction_tolerance: int = 0
     ) -> bool:
         """Run motor(s) to given absolute position
 
@@ -840,77 +857,147 @@ class DriveBase:
         #### acceleration: int = 1000
             The acceleration of the motor. \n
             Die Beschleunigung des Motors. \n
+        #### direction: int = 2
+            The direction strategy to use. \n
+            Die Richtungsstrategie, die verwendet werden soll. \n
+            CLOCKWISE = 0, COUNTERCLOCKWISE = 1, SHORTEST_PATH = 2, LONGEST_PATH = 3
+        #### fine_correction: bool = True
+            If the robot should correct its position at the end. \n
+            Ob der Roboter am Ende seine Position korrigieren soll.
+        #### correction_timeout: int = 2000
+            Max time in ms for correction. \n
+            Maximalzeit in ms für die Korrektur.
+        #### correction_tolerance: int = 0
+            The tolerance in degrees for the correction. \n
+            Die Toleranz in Grad für die Korrektur.
         """
 
-        def reached(port: int) -> bool:
-            """
-            Return whether the distance is reached
-            """
-            pos = (motor.absolute_position(port) + 360) % 360
-            # print(pos, position)
-            if position < 0 and pos <= position:
-                motor.stop(port)
-                return True
-            elif position > 0 and pos >= position:
-                motor.stop(port)
-                return True
-            elif position == 0 and abs(pos) >= 340:
-                motor.stop(port)
-                return True
-            else:
-                return False
-
-        def invert(port: int) -> int:
-            """
-            Return whether the speed should be inverted for this port
-            """
-            current_pos = self.__convert_abs__(motor.absolute_position(port))
-            if (position - current_pos) > 0:
-                Logger.debug(-1)
-                return -1
-            else:
-                Logger.debug(1)
-                return 1
-
         ports_list = [port for port in ports]
+        start_ticks = {}
         if len(ports) == 0:
             Logger.exception(40, "Please give ports")
             return False
+            
         try:
+            sub_tasks = []
             for port in ports_list:
-                motor.run(port, invert(port) * speed, acceleration=acceleration)
+                current_abs = (motor.absolute_position(port) % 360)
+                target_abs = (position % 360)
+                
+                diff = (target_abs - current_abs) % 360
+                
+                delta = 0
+                if direction == self.CLOCKWISE:
+                    delta = diff
+                elif direction == self.COUNTERCLOCKWISE:
+                    delta = diff - 360 if diff != 0 else 0
+                elif direction == self.SHORTEST_PATH:
+                    if diff <= 180:
+                        delta = diff
+                    else:
+                        delta = diff - 360
+                elif direction == self.LONGEST_PATH:
+                    if diff > 180:
+                        delta = diff
+                    else:
+                        delta = diff - 360
+                
+                start_rel = motor.relative_position(port)
+                target_rel = start_rel + delta
+                
+                move_speed = abs(speed)
+                if delta < 0:
+                    move_speed = -move_speed
+                elif delta == 0:
+                    move_speed = 0
+                
+                if delta != 0:
+                    motor.run(port, int(move_speed), acceleration=acceleration)
+                    start_ticks[port] = time.ticks_ms()
+                    sub_tasks.append((port, target_rel, delta))
+
+            while len(sub_tasks) > 0:
+                for task in sub_tasks[:]:
+                    port, target_rel, delta = task
+                    current_rel = motor.relative_position(port)
+                    
+                    finished = False
+                    if delta > 0:
+                        if current_rel >= target_rel:
+                            finished = True
+                    else:
+                        if current_rel <= target_rel:
+                            finished = True
+                    
+                    if motor.get_duty_cycle(port) == 0 and time.ticks_diff(time.ticks_ms(), start_ticks[port]) > 100:
+                        motor.stop(port)
+                        sub_tasks.remove(task)
+                     
+                    if finished:
+                         motor.stop(port)
+                         sub_tasks.remove(task)
+                         
+                
+                if len(sub_tasks) == 0:
+                    break
+                    
+                time.sleep_ms(10)
+            
+            # Fine correction phase
+            if fine_correction:
+                # Give motors time to settle after stop
+                time.sleep_ms(100) 
+                
+                start_time = time.ticks_ms()
+                ports_to_correct = list(ports)
+                
+                while time.ticks_diff(time.ticks_ms(), start_time) < correction_timeout and len(ports_to_correct) > 0:
+                    for port in ports_to_correct[:]:
+                        # Check absolute position error
+                        current_abs = motor.absolute_position(port)
+                        # Calc shortest distance to target
+                        diff = (position - current_abs + 180) % 360 - 180
+                        
+                        if abs(diff) <= correction_tolerance:
+                            motor.stop(port)
+                            ports_to_correct.remove(port)
+                        else:
+                            # Simple proportional controller or fixed low speed
+                            # Using fixed low speed to avoid oscillation if not using PID
+                            correct_speed = 100
+                            if diff < 0:
+                                correct_speed = -100
+                            
+                            motor.run(port, correct_speed)
+                            
+                    if len(ports_to_correct) == 0:
+                        break
+                        
+                    time.sleep_ms(10)
+                
+                # Stop any remaining motors
+                for port in ports_to_correct:
+                    motor.stop(port)
+
+            return True
         except Exception as e:
             Logger.exception(
                 12, "run to absolute position had following error: {}".format(
                     e)
             )
+            raise e
             return False
-        while True:
-            for port in ports_list:
-                pos = (motor.absolute_position(port) + 360) % 360
-                if position < 0 and pos <= position:
-                    motor.stop(port)
-                    ports_list.remove(port)
-                elif position > 0 and pos >= position:
-                    motor.stop(port)
-                    ports_list.remove(port)
-                elif position == 0 and pos in range(position, position + 5):
-                    print(
-                        "finish {}".format(
-                            (motor.absolute_position(port) + 360) % 360)
-                    )
-                    motor.stop(port)
-                    print(
-                        "finish {}".format(
-                            (motor.absolute_position(port) + 360) % 360)
-                    )
-                    ports_list.remove(port)
-            if len(ports_list) == 0:
-                break
-        return True
 
     def run_to_relative_position(
-        self, position: int = 0, speed: int = 500, *ports: int, acceleration: int = 1000
+        self, 
+        position: int = 0, 
+        speed: int = 500, 
+        *ports: int, 
+        acceleration: int = 1000, 
+        direction: int = 2,
+        fine_correction: bool = True,
+        correction_timeout: int = 2000,
+        correction_tolerance: int = 0
     ) -> bool:
         """Run motor(s) to given relative position
 
@@ -933,52 +1020,103 @@ class DriveBase:
         #### acceleration: int = 1000
             The acceleration of the motor. \n
             Die Beschleunigung des Motors. \n
+        #### direction: int = 2
+            Unused for relative position, but kept for consistency. logic is always Shortest/Linear.
+        #### fine_correction: bool = True
+            If the robot should correct its position at the end. \n
+            Ob der Roboter am Ende seine Position korrigieren soll.
+        #### correction_timeout: int = 2000
+            Max time in ms for correction. \n
+            Maximalzeit in ms für die Korrektur.
+        #### correction_tolerance: int = 0
+            The tolerance in degrees for the correction. \n
+            Die Toleranz in Grad für die Korrektur.
         """
 
-        def reached() -> bool:
-            """
-            Return whether the distance is reached
-            """
-            if position > 0 and current_pos >= position:
-                return True
-            elif position < 0 and current_pos <= position:
-                return True
-            else:
-                return False
-
-        def invert(port) -> int:
-            """
-            Return whether the speed should be inverted for this port
-            """
-            current_pos = motor.relative_position(port)
-            if (position - current_pos) > 0:
-                return -1
-            else:
-                return 1
-
         ports_list = [port for port in ports]
-        if len(ports) == 0:
+        if len(ports_list) == 0:
             Logger.exception(40, "Please give ports")
             return False
+            
         try:
+            sub_tasks = []
             for port in ports_list:
-                motor.run(port, invert(port) * speed, acceleration=acceleration)
-                pass
+                start_rel = motor.relative_position(port)
+                delta = position - start_rel
+                
+                move_speed = abs(speed)
+                if delta < 0:
+                    move_speed = -move_speed
+                elif delta == 0:
+                    move_speed = 0
+                
+                if delta != 0:
+                    motor.run(port, int(move_speed), acceleration=acceleration)
+                    sub_tasks.append((port, position, delta))
+
+            while len(sub_tasks) > 0:
+                for task in sub_tasks[:]:
+                    port, target_rel, delta = task
+                    current_rel = motor.relative_position(port)
+                    
+                    finished = False
+                    if delta > 0:
+                        if current_rel >= target_rel:
+                            finished = True
+                    else:
+                        if current_rel <= target_rel:
+                            finished = True
+                            
+                    if finished:
+                         motor.stop(port)
+                         sub_tasks.remove(task)
+                
+                if len(sub_tasks) == 0:
+                    break
+                    
+                time.sleep_ms(10) # 10ms for faster update than 100ms
+            
+            # Fine correction phase
+            if fine_correction:
+                # Give motors time to settle after stop
+                time.sleep_ms(100) 
+                
+                start_time = time.ticks_ms()
+                ports_to_correct = list(ports)
+                
+                while time.ticks_diff(time.ticks_ms(), start_time) < correction_timeout and len(ports_to_correct) > 0:
+                    for port in ports_to_correct[:]:
+                        # Check relative position error
+                        current_rel = motor.relative_position(port)
+                        diff = position - current_rel
+                        
+                        if abs(diff) <= correction_tolerance:
+                            motor.stop(port)
+                            ports_to_correct.remove(port)
+                        else:
+                            # Simple proportional controller or fixed low speed
+                            correct_speed = 100
+                            if diff < 0:
+                                correct_speed = -100
+                            
+                            motor.run(port, correct_speed)
+                            
+                    if len(ports_to_correct) == 0:
+                        break
+                        
+                    time.sleep_ms(10)
+                
+                # Stop any remaining motors
+                for port in ports_to_correct:
+                    motor.stop(port)
+                
+            return True
         except Exception as e:
             Logger.exception(
                 12, "run to relative position had following error: {}".format(
                     e)
             )
             return False
-        while True:
-            for port in ports_list:
-                current_pos = motor.relative_position(port)
-                if reached():
-                    ports_list.remove(port)
-                    motor.stop(port, stop=motor.SMART_COAST)
-            if len(ports_list) == 0:
-                break
-        return True
 
     def attach_addition(self, attach: bool = True) -> bool:
         """Attach/Detach the addition.
@@ -999,6 +1137,7 @@ class DriveBase:
             Logger.info("WAITING", code = "START")
             while (motor.get_duty_cycle(self.ADDITION) / 100) < 100:
                 pass
+            time.sleep(1)
             motor.stop(self.ADDITION)
             self.addition_state = True
             return True
@@ -1026,6 +1165,15 @@ class DriveBase:
                 current_pos = motor.relative_position(port)
                 if abs(current_pos) == 0:
                     break
+                
+    def reset_gyro(self):
+        """Reset the gyro sensor to zero position.
+
+        Setze den Gyrosensor auf die Nullposition.
+        """
+        self.gyroSens.reset_yaw(0)
+        self.global_turn_value = 0
+        time.sleep_ms(500)
 
     def stop_motor(self, *ports) -> bool:
         """Stop given motor
@@ -1249,21 +1397,33 @@ class DriveBase:
             )
 
         if self.PREGLER == 0:
-            p_regler = pRegler()
+            p_regler = 3
         else:
             p_regler = self.PREGLER
             
         if self.IREGLER == 0:
-            i_regler = iRegler()
+            i_regler = 1
         else:
             i_regler = self.IREGLER
             
-        if not self.DREGLER:
+        if self.DREGLER == 0:
+            d_regler = 3
+        else:
             d_regler = self.DREGLER
         
 
         return (p_regler, i_regler, d_regler)
 
+    
+    def get_heading(self):
+        """EXPERIMENTAL"""
+        def get_gyro() -> float:
+            return self.gyroSens.tilt_angles()[0] / 10
+        
+        Logger.debug("Gyro Heading: {}".format(get_gyro()))
+        
+        
+        
     def collided(self, cycl, start_cycl, gate: int = 300):
         """Detect collision based on change in motor cycle.
         Determine if a collision has occurred by comparing the current motor cycle 
@@ -1293,4 +1453,4 @@ class DriveBase:
             return False
 
     def __convert_abs__(self, abs_pos: int = 0) -> int:
-        return (abs_pos + 360) % 3604
+        return (abs_pos % 360)
