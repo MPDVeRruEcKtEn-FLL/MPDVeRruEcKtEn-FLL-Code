@@ -725,7 +725,7 @@ class DriveBase:
         #### speed: int = 500 [degree/second]
             How fast the motor should turn. \n
             Wie schnell sich der Motor drehen soll. \n
-        #### angle: float = 5 [degree]
+        #### degree: float = 5 [degree]
             How much the motor should turn. \n
             Wie viel sich der Motor drehen soll. \n
         #### ports: int
@@ -738,6 +738,10 @@ class DriveBase:
             The acceleration of the motor. \n
             Die Beschleunigung des Motors. \n
         """
+        
+        motor.run_for_degrees(ports[0], degree, speed, acceleration=acceleration)
+        
+        return
 
         def reached() -> bool:
             if abs(current_pos - target_pos) <= tolerance:
@@ -1118,7 +1122,7 @@ class DriveBase:
             )
             return False
 
-    def attach_addition(self, attach: bool = True) -> bool:
+    def attach_addition(self, attach: bool = True, force: bool = False) -> bool:
         """Attach/Detach the addition.
 
         Attach or detach the addition of the robot.
@@ -1132,7 +1136,8 @@ class DriveBase:
             In welchen Zustand der Aufsatz gesetzt werden soll.
         """
         old_state = self.addition_state
-        if attach and not old_state:
+        
+        def attach_process():
             motor.run(3, 600, acceleration=10000)
             Logger.info("WAITING", code = "START")
             while (motor.get_duty_cycle(self.ADDITION) / 100) < 100:
@@ -1141,10 +1146,21 @@ class DriveBase:
             motor.stop(self.ADDITION)
             self.addition_state = True
             return True
-        elif not attach and old_state:
+            
+        def detach():
             self.run_motor_duration(-600, 1, self.ADDITION)
             self.addition_state = False
             return True
+        
+        if force:
+            if attach:
+                return attach_process()
+            else:
+                return detach()
+        elif attach and not old_state:
+            return attach_process()
+        elif not attach and old_state:
+            return detach()
         else:
             return False
 

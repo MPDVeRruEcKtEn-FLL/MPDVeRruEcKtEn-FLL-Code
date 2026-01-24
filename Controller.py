@@ -1,3 +1,5 @@
+# LEGO slot:09 autostart
+
 import hub
 import motor
 import time
@@ -41,6 +43,7 @@ class Controller:
             self.golden_path,
             self.green_path,
             self.lilac_path,
+            self.red_path
                       ]
 
         Logger.info("Started Program", code = 0)
@@ -123,24 +126,25 @@ class Controller:
         db = self.driveBase
         db.attach_addition(True)
         db.drive_distance(58, re_align=False)
-        db.drive_distance(-6)
-        db.run_motor_duration(-1110, 5, 2)
-        for i in range(2):
+        db.drive_distance(-5, re_align=False)
+        db.run_motor_duration(-1110, 4, 2)
+        for i in range(3):
             db.drive_distance(8, stop=False, re_align=False)
             db.drive_distance(-8, stop=False, re_align=False)
         db.drive_distance(10, re_align=False)
-        db.run_motor_duration(1110, 5, 2)
+        db.run_motor_duration(1110, 4, 2)
         db.drive_distance(-60, re_align=False)
     
     def golden_path(self):
         def arm_up(speed=300, acc=1000):
-            db.run_to_absolute_position(145, speed, 2, acceleration=acc)
+            db.run_to_absolute_position(145, speed, 2, acceleration=acc, correction_tolerance=1, correction_timeout=1000)
         def arm_down(speed=300, acc=1000):
             db.run_to_absolute_position(45, speed, 2, acceleration=acc)
         db = self.driveBase
         db.run_to_absolute_position(45, 100, 2)
         db.attach_addition(True)
-        db.drive_distance(-4)
+        db.reset_gyro()
+        db.drive_distance(-5, isolated_drive=True, re_align=False)
         db.reset_gyro()
         arm_up()
         db.drive_distance(52)
@@ -154,33 +158,26 @@ class Controller:
         arm_up()
         db.drive_distance(5)
 
-        db.turn_to_angle(-157, DriveBase.RIGHTTURN)
+        db.turn_to_angle(-158, DriveBase.RIGHTTURN)
         db.drive_distance(-20)
         arm_down()
         db.drive_distance(8)
         db.run_to_absolute_position(145, 1110, 2, acceleration=10000)
         time.sleep_ms(300)
         arm_up()
-        db.turn_to_angle(-90, DriveBase.RIGHTTURN, iGain=2)
+        db.turn_to_angle(-90, DriveBase.RIGHTTURN)
         db.drive_distance(50)
         db.turn_to_angle(-143, DriveBase.RIGHTTURN)
         db.drive_distance(-4)
         arm_down(1110, 10000)
         arm_down(200)
-        time.sleep_ms(300)
-        arm_up(200)
-        db.turn_to_angle(-133, dGain=0)
-        db.drive_distance(5)
-        arm_down()
-        motor.run(2, -200)
-        db.drive_distance(20, 800)
-        db.drive_distance(-30)
 
     def green_path(self):
         db = self.driveBase
         db.run_to_absolute_position(0, 1000, 2)
         db.attach_addition(True)
-        db.drive_distance(-5)
+        db.reset_gyro()
+        db.drive_distance(-5, isolated_drive=True, re_align=False)
         db.reset_gyro()
         db.run_to_absolute_position(-90, 10000, 2, acceleration=400)
         db.drive_distance(80, mainspeed=1110, stopspeed=800)
@@ -196,31 +193,45 @@ class Controller:
         db.drive_distance(-4, 800, re_align=False)
         db.run_to_absolute_position(-30, 100, 2)
         db.drive_distance(-7, re_align=False)
-        db.turn_to_angle(-170, pGain=30)
-        db.drive_distance(75,1100)
+        db.turn_to_angle(-165, pGain=30)
+        db.drive_distance(80,1100)
 
     def red_path(self):
         db = self.driveBase
         db.attach_addition(True)
-        db.drive_distance(-5)
         db.reset_gyro()
-        db.drive_distance(80)
-        db.drive_distance(-82)
+        db.drive_distance(-5, isolated_drive=True, re_align=False)
+        db.reset_gyro()
+        db.drive_distance(68)
+        db.drive_distance(-70)
 
     def lilac_path(self):
         db = self.driveBase
         db.run_to_absolute_position(45, 100, 2)
         db.attach_addition(True)
-        db.drive_distance(-5)
+        db.reset_gyro()
+        db.drive_distance(-5, isolated_drive=True, re_align=False)
         db.reset_gyro()
         motor.run(2, 50)
         db.drive_distance(53)
         motor.stop(2)
         for i in range(0,3):
             db.run_to_absolute_position(45, 600, 2, acceleration=2000)
-            db.run_to_absolute_position(135, 100, 2)
+            db.run_to_absolute_position(135, 100, 2, correction_tolerance=1, correction_timeout=1000)
         db.drive_distance(-53)
         db.run_to_absolute_position(45, 100, 2)
+        
+        
+    def presentation_drive(self):
+        db = self.driveBase
+        db.drive_distance(60)
+        db.turn_to_angle(90)
+        
+    def presentation_attach(self):
+        db = self.driveBase
+        db.attach_addition(True)
+        time.sleep(1)
+        db.attach_addition(False)
 
     ###########
     # TESTING #
@@ -230,6 +241,19 @@ class Controller:
         while not self.__button_check__(0):
             self.driveBase.get_heading()
             time.sleep(1)
+            
+            
+    def test_addition(self):
+        self.driveBase.run_to_absolute_position(45, 200, 2)
+        self.driveBase.attach_addition(True)
+        self.driveBase.run_to_absolute_position(135, 200, 2, correction_tolerance=1, correction_timeout=1000)
+        time.sleep(2)
+        self.driveBase.attach_addition(False)
+        
+        
+    def drive(self):
+        db = self.driveBase
+        db.drive_distance(20)
 
 
 ctrl = Controller()
